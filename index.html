@@ -1105,3 +1105,1382 @@
                 openChecklistManager(); 
             }
         }
+        // --- 6. MACRO-GEOMETRIA E MANAGER STRUTTURALI (CRUD BASE) ---
+        function openSedeModal(id = null) { 
+            currentEdit = { action: id ? 'edit' : 'new', id: id }; 
+            document.getElementById('input-sede-name').value = id ? appStructure.sedi[id].name : ''; 
+            showModal('modal-sede'); 
+        }
+        
+        function saveSede() { 
+            const n = sanitize(document.getElementById('input-sede-name').value); 
+            if(!n) return; 
+            
+            if(currentEdit.action === 'new') { 
+                const id = 'sede_' + generateId(); 
+                appStructure.sedi[id] = {
+                    id: id, 
+                    name: n, 
+                    folders: {}, 
+                    roles: [], 
+                    checklists: [], 
+                    supplierCategories: [], 
+                    categories: [{id: 'c1', name: 'Generale', color: '#0ea5e9', type: 'standard'}]
+                }; 
+                activeSede = id; 
+            } else { 
+                appStructure.sedi[currentEdit.id].name = n; 
+            } 
+            saveStructure(); 
+            closeModals(); 
+            if(typeof renderApp === 'function') renderApp(); 
+        }
+        
+        function deleteSede(id) { 
+            if(confirm("[CRITICAL] Polverizzare la Sede e disintegrare tutti i dati in essa contenuti?")) { 
+                delete appStructure.sedi[id]; 
+                activeSede = Object.keys(appStructure.sedi)[0] || null; 
+                saveStructure(); 
+                if(typeof renderApp === 'function') renderApp(); 
+            } 
+        }
+
+        function openFolderModal(id = null) { 
+            currentEdit = { action: id ? 'edit' : 'new', id: id }; 
+            document.getElementById('input-folder-name').value = id ? appStructure.sedi[activeSede].folders[id].name : ''; 
+            showModal('modal-folder'); 
+        }
+        
+        function saveFolder() { 
+            const n = sanitize(document.getElementById('input-folder-name').value); 
+            if(!n) return; 
+            
+            if(currentEdit.action === 'new') { 
+                const id = 'f_' + generateId(); 
+                appStructure.sedi[activeSede].folders[id] = {id: id, name: n, sections: []}; 
+                activeFolder = id; 
+            } else { 
+                appStructure.sedi[activeSede].folders[currentEdit.id].name = n; 
+            } 
+            saveStructure(); 
+            closeModals(); 
+            if(typeof renderFolders === 'function') {
+                renderFolders(); 
+                renderContent(); 
+            }
+        }
+        
+        function deleteFolder(id) { 
+            if(confirm("Smantellare questo Turno Operativo?")) { 
+                delete appStructure.sedi[activeSede].folders[id]; 
+                activeFolder = Object.keys(appStructure.sedi[activeSede].folders)[0] || null; 
+                saveStructure(); 
+                if(typeof renderFolders === 'function') {
+                    renderFolders(); 
+                    renderContent();
+                } 
+            } 
+        }
+
+        function openSectionModal(id = null) { 
+            currentEdit = { action: id ? 'edit' : 'new', id: id }; 
+            const sCol = document.getElementById('input-section-color'); 
+            sCol.innerHTML = ''; 
+            
+            appStructure.sedi[activeSede].categories.forEach(c => { 
+                sCol.innerHTML += `<option value="${c.color}">${sanitize(c.name)}</option>`; 
+            }); 
+            
+            if(id) { 
+                const s = appStructure.sedi[activeSede].folders[activeFolder].sections.find(x => x.id === id); 
+                document.getElementById('input-section-name').value = s.name; 
+                sCol.value = s.color; 
+            } else { 
+                document.getElementById('input-section-name').value = ''; 
+                if(appStructure.sedi[activeSede].categories.length > 0) {
+                    sCol.value = appStructure.sedi[activeSede].categories[0].color; 
+                }
+            } 
+            showModal('modal-section'); 
+        }
+        
+        function saveSection() { 
+            const n = sanitize(document.getElementById('input-section-name').value);
+            const c = document.getElementById('input-section-color').value; 
+            if(!n) return; 
+            
+            let arr = appStructure.sedi[activeSede].folders[activeFolder].sections; 
+            if(currentEdit.action === 'new') {
+                arr.push({id: 's_' + generateId(), name: n, color: c, items: []}); 
+            } else { 
+                let s = arr.find(x => x.id === currentEdit.id); 
+                s.name = n; 
+                s.color = c; 
+            } 
+            saveStructure(); 
+            closeModals(); 
+            if(typeof renderContent === 'function') renderContent(); 
+        }
+        
+        function deleteSection(id) { 
+            if(confirm("Disintegrare la cella logica e tranciare tutti i prodotti all'interno?")) { 
+                appStructure.sedi[activeSede].folders[activeFolder].sections = appStructure.sedi[activeSede].folders[activeFolder].sections.filter(x => x.id !== id); 
+                saveStructure(); 
+                if(typeof renderContent === 'function') renderContent(); 
+            } 
+        }
+
+        // --- 7. SISTEMI DI CATEGORIZZAZIONE (REPARTI) ---
+        function openCategoryManager() { 
+            const list = document.getElementById('category-list-editor'); 
+            list.innerHTML = ''; 
+            
+            appStructure.sedi[activeSede].categories.forEach(cat => { 
+                list.innerHTML += `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:16px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
+                        <span style="font-weight:700;">
+                            <i class="fa-solid fa-circle" style="color:${cat.color}; margin-right:12px;"></i> ${sanitize(cat.name)} 
+                            <span style="font-size:0.75rem; color:var(--text-muted); margin-left:8px;">(${cat.type})</span>
+                        </span>
+                        <i class="fa-solid fa-trash" style="color:var(--danger); cursor:pointer; padding:8px;" onclick="deleteCategory('${cat.id}')"></i>
+                    </div>`; 
+            }); 
+            
+            const p = document.getElementById('color-palette'); 
+            p.innerHTML = ''; 
+            PALETTE.forEach(c => { 
+                p.innerHTML += `<div class="color-dot ${selectedColor === c ? 'selected' : ''}" style="background:${c}; width:36px; height:36px; border-radius:50%; cursor:pointer; box-shadow:var(--shadow-sm); border: ${selectedColor === c ? '3px solid var(--text)' : 'none'};" onclick="selectColor('${c}', this)"></div>`; 
+            }); 
+            showModal('modal-category-manager'); 
+        }
+        
+        function selectColor(c, el) { 
+            selectedColor = c; 
+            document.querySelectorAll('.color-dot').forEach(d => d.style.border = 'none'); 
+            el.style.border = '3px solid var(--text)'; 
+        }
+        
+        function addCategory() { 
+            const n = sanitize(document.getElementById('new-cat-name').value);
+            const t = document.getElementById('new-cat-type').value; 
+            if(!n) return; 
+            
+            appStructure.sedi[activeSede].categories.push({ id: 'cat_' + generateId(), name: n, color: selectedColor, type: t }); 
+            document.getElementById('new-cat-name').value = ''; 
+            saveStructure(); 
+            openCategoryManager(); 
+            if(typeof renderCategories === 'function') renderCategories(); 
+            showToast("Nodo Spazio Logico allocato.", "success"); 
+        }
+        
+        function deleteCategory(id) { 
+            if(appStructure.sedi[activeSede].categories.length > 1 && confirm("Smantellare questo Reparto? (I prodotti associati resteranno orfani)")) { 
+                appStructure.sedi[activeSede].categories = appStructure.sedi[activeSede].categories.filter(c => c.id !== id); 
+                saveStructure(); 
+                openCategoryManager(); 
+                if(typeof renderCategories === 'function') renderCategories(); 
+            } else if (appStructure.sedi[activeSede].categories.length === 1) { 
+                showToast("Errore di integrità: Impossibile recidere l'ultimo strato logico.", "error");
+            } 
+        }
+
+        // --- 8. LOGISTICA E FORNITORI ---
+        function openSuppliersManager() {
+            const list = document.getElementById('suppliers-list-editor'); 
+            list.innerHTML = '';
+            const suppliers = appStructure.sedi[activeSede].supplierCategories || [];
+            
+            suppliers.forEach(sup => {
+                list.innerHTML += `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:16px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
+                        <span style="font-weight:700;"><i class="fa-solid fa-truck" style="color:var(--accent); margin-right:12px;"></i> ${sanitize(sup.name)}</span>
+                        <i class="fa-solid fa-trash" style="color:var(--danger); cursor:pointer; padding:8px;" onclick="deleteSupplier('${sup.id}')"></i>
+                    </div>`;
+            });
+            showModal('modal-suppliers-manager');
+        }
+        
+        function addSupplier() {
+            const n = sanitize(document.getElementById('new-supplier-name').value);
+            if(!n) return;
+            
+            if(!appStructure.sedi[activeSede].supplierCategories) {
+                appStructure.sedi[activeSede].supplierCategories = [];
+            }
+            appStructure.sedi[activeSede].supplierCategories.push({ id: 'sup_' + generateId(), name: n });
+            
+            document.getElementById('new-supplier-name').value = '';
+            saveStructure(); 
+            openSuppliersManager(); 
+            showToast("Nodo Fornitore validato.", "success");
+        }
+        
+        function deleteSupplier(id) {
+            if(confirm("Recidere i legami con questa Rete di Approvvigionamento?")) {
+                appStructure.sedi[activeSede].supplierCategories = appStructure.sedi[activeSede].supplierCategories.filter(s => s.id !== id);
+                
+                Object.values(appStructure.sedi[activeSede].folders).forEach(f => {
+                    f.sections.forEach(s => { 
+                        s.items.forEach(i => { 
+                            if(i.supplierCatId === id) delete i.supplierCatId; 
+                        }); 
+                    });
+                });
+                saveStructure(); 
+                openSuppliersManager(); 
+                if(typeof renderContent === 'function') renderContent();
+            }
+        }
+
+        // --- 9. ORGANIGRAMMA E MATRIOSKA (PROFILI) ---
+        function toggleRoleCategories() { 
+            const type = document.getElementById('new-role-type').value; 
+            document.getElementById('role-categories-wrapper').style.display = (type === 'erp') ? 'block' : 'none'; 
+        }
+        
+        function openRolesManager() {
+            const list = document.getElementById('roles-list-editor'); 
+            list.innerHTML = ''; 
+            const roles = appStructure.sedi[activeSede].roles || [];
+            
+            roles.forEach(role => { 
+                const icon = role.type === 'checklist' ? 'fa-clipboard-list' : 'fa-user-shield';
+                const groupBadge = role.group && role.group.trim() !== "" ? `<span style="font-size:0.7rem; color:var(--text-muted); display:block; margin-top:4px;">Grp: ${sanitize(role.group)}</span>` : '';
+                
+                list.innerHTML += `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:16px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-md); margin-bottom:10px;">
+                        <div style="display:flex; flex-direction:column;">
+                            <span style="font-weight:700;">
+                                <i class="fa-solid ${icon}" style="margin-right:8px; color:var(--text-muted);"></i> ${sanitize(role.name)} 
+                                <span style="font-size:0.7rem; color:var(--accent); font-weight:800; margin-left:6px;">[${role.type === 'checklist' ? 'HUB CASSA' : 'ERP'}]</span>
+                            </span>
+                            ${groupBadge}
+                        </div>
+                        <div style="display:flex; gap:10px;">
+                            <i class="fa-solid fa-pen" style="color:var(--warning); cursor:pointer; padding:8px;" onclick="editRole('${role.id}')"></i>
+                            <i class="fa-solid fa-trash" style="color:var(--danger); cursor:pointer; padding:8px;" onclick="deleteRole('${role.id}')"></i>
+                        </div>
+                    </div>`; 
+            });
+            
+            const catContainer = document.getElementById('new-role-categories'); 
+            catContainer.innerHTML = '';
+            
+            appStructure.sedi[activeSede].categories.forEach(c => { 
+                catContainer.innerHTML += `
+                    <label style="display:flex; align-items:center; gap:12px; font-weight:600; font-size:0.9rem; text-transform:none; margin:0; padding:8px 0;">
+                        <input type="checkbox" value="${c.id}" class="role-cat-check" checked style="width:20px; height:20px;"> 
+                        <i class="fa-solid fa-circle" style="color:${c.color}; font-size:0.7rem;"></i> ${sanitize(c.name)}
+                    </label>`; 
+            });
+            
+            resetRoleForm(); 
+            showModal('modal-roles-manager');
+        }
+        
+        function editRole(id) {
+            const role = appStructure.sedi[activeSede].roles.find(r => r.id === id); 
+            if(!role) return;
+            
+            document.getElementById('edit-role-id').value = role.id; 
+            document.getElementById('new-role-name').value = role.name; 
+            document.getElementById('new-role-group').value = role.group || ''; 
+            document.getElementById('new-role-pin').value = role.pin; 
+            document.getElementById('new-role-type').value = role.type || 'erp';
+            
+            toggleRoleCategories(); 
+            document.querySelectorAll('.role-cat-check').forEach(cb => { 
+                cb.checked = role.allowedCats && role.allowedCats.includes(cb.value); 
+            });
+            
+            document.getElementById('role-form-title').innerText = "Ricalibra Identità: " + sanitize(role.name); 
+            document.getElementById('btn-cancel-role').style.display = 'block'; 
+            document.getElementById('modal-roles-manager').scrollTop = document.getElementById('modal-roles-manager').scrollHeight;
+        }
+        
+        function resetRoleForm() { 
+            document.getElementById('edit-role-id').value = ''; 
+            document.getElementById('new-role-name').value = ''; 
+            document.getElementById('new-role-group').value = ''; 
+            document.getElementById('new-role-pin').value = ''; 
+            document.getElementById('new-role-type').value = 'erp'; 
+            
+            toggleRoleCategories(); 
+            
+            document.querySelectorAll('.role-cat-check').forEach(cb => cb.checked = true); 
+            document.getElementById('role-form-title').innerText = "Istanzia Nuova Identità Operativa"; 
+            document.getElementById('btn-cancel-role').style.display = 'none'; 
+        }
+        
+        function saveRole() {
+            const editId = document.getElementById('edit-role-id').value; 
+            const n = sanitize(document.getElementById('new-role-name').value); 
+            const g = sanitize(document.getElementById('new-role-group').value); 
+            const p = document.getElementById('new-role-pin').value; 
+            const t = document.getElementById('new-role-type').value;
+            
+            if(!n || !p) return showToast("Identificativo o Firma di sicurezza mancanti.", "error");
+            
+            let allowed = []; 
+            if (t === 'erp') { 
+                document.querySelectorAll('.role-cat-check:checked').forEach(cb => allowed.push(cb.value)); 
+            }
+            
+            if(!appStructure.sedi[activeSede].roles) appStructure.sedi[activeSede].roles = [];
+            
+            if (editId) { 
+                let role = appStructure.sedi[activeSede].roles.find(r => r.id === editId); 
+                if(role) { 
+                    role.name = n; 
+                    role.group = g; 
+                    role.pin = p; 
+                    role.type = t; 
+                    role.allowedCats = allowed; 
+                } 
+                showToast("Firma e Permessi aggiornati.", "success"); 
+            } else { 
+                appStructure.sedi[activeSede].roles.push({ 
+                    id: 'role_' + generateId(), 
+                    name: n, 
+                    group: g, 
+                    pin: p, 
+                    type: t, 
+                    allowedCats: allowed 
+                }); 
+                showToast("Profilo compilato con successo.", "success"); 
+            }
+            
+            saveStructure(); 
+            openRolesManager(); 
+        }
+        
+        function deleteRole(id) { 
+            if(confirm("Estirpare permanentemente l'identità di questo operatore dal server?")) { 
+                appStructure.sedi[activeSede].roles = appStructure.sedi[activeSede].roles.filter(r => r.id !== id); 
+                saveStructure(); 
+                openRolesManager(); 
+            } 
+        }
+
+        // --- 10. RENDERING ENGINE CORE ---
+        function renderApp() { 
+            renderSidebar(); 
+            renderFolders(); 
+            renderCategories(); 
+            renderContent(); 
+        }
+        
+        function renderSidebar() { 
+            const menu = document.getElementById('sedi-menu'); 
+            if(!menu) return;
+            menu.innerHTML = ''; 
+            
+            Object.values(appStructure.sedi).forEach(sede => { 
+                menu.innerHTML += `
+                    <div class="nav-item ${sede.id === activeSede ? 'active' : ''}" onclick="selectSede('${sede.id}')">
+                        <i class="fa-solid fa-building"></i> 
+                        <span style="flex:1;">${sanitize(sede.name)}</span> 
+                        ${editMode ? `<div style="display:flex; gap:12px;"><i class="fa-solid fa-pen" style="color:var(--warning);" onclick="event.stopPropagation(); openSedeModal('${sede.id}')"></i><i class="fa-solid fa-trash" style="color:var(--danger);" onclick="event.stopPropagation(); deleteSede('${sede.id}')"></i></div>` : ''}
+                    </div>`; 
+            }); 
+            
+            if(editMode) {
+                menu.innerHTML += `<div class="nav-item" style="color:var(--success);" onclick="openSedeModal()"><i class="fa-solid fa-plus"></i> Inizializza Sede</div>`; 
+            }
+        }
+        
+        function selectSede(id) { 
+            activeSede = id; 
+            const fKeys = Object.keys(appStructure.sedi[id].folders);
+            activeFolder = fKeys.length > 0 ? fKeys[0] : null; 
+            applyRolePermissions(); 
+            renderApp(); 
+        }
+        
+        function renderFolders() { 
+            const menu = document.getElementById('folders-menu'); 
+            if(!menu) return;
+            menu.innerHTML = ''; 
+            
+            if(!activeSede || !appStructure.sedi[activeSede].folders) return; 
+            
+            const headerTitle = document.getElementById('header-title');
+            if(headerTitle) headerTitle.innerText = sanitize(appStructure.sedi[activeSede].name); 
+            
+            Object.values(appStructure.sedi[activeSede].folders).forEach(f => { 
+                menu.innerHTML += `
+                    <div class="folder-tab ${f.id === activeFolder ? 'active' : ''}" onclick="selectFolder('${f.id}')" style="display:flex; align-items:center;">
+                        ${sanitize(f.name)} 
+                        ${editMode ? `<i class="fa-solid fa-pen" style="color:var(--warning); margin-left:12px;" onclick="event.stopPropagation(); openFolderModal('${f.id}')"></i><i class="fa-solid fa-xmark" style="color:var(--danger); margin-left:12px;" onclick="event.stopPropagation(); deleteFolder('${f.id}')"></i>` : ''}
+                    </div>`; 
+            }); 
+            
+            if(editMode) {
+                menu.innerHTML += `<div class="folder-tab" style="color:var(--success); border-color:var(--success);" onclick="openFolderModal()"><i class="fa-solid fa-plus"></i> Nuovo Turno</div>`; 
+            }
+        }
+        
+        function selectFolder(id) { 
+            activeFolder = id; 
+            renderFolders(); 
+            renderContent(); 
+        }
+
+        function renderCategories() {
+            const menu = document.getElementById('categories-filter-menu'); 
+            if(!menu) return;
+            menu.innerHTML = '';
+            
+            const isManager = (activeProfile === 'admin');
+            const role = !isManager ? appStructure.sedi[activeSede].roles.find(r => r.id === activeProfile) : null;
+            
+            if (isManager) {
+                menu.innerHTML = `<div class="nav-item ${activeCatFilter === 'tutti' ? 'active' : ''}" onclick="setCatFilter('tutti')"><i class="fa-solid fa-border-all"></i> Spazio Globale</div>`;
+            }
+            
+            (appStructure.sedi[activeSede].categories || []).forEach(cat => { 
+                if(!isManager && (!role || !role.allowedCats.includes(cat.id))) return;
+                menu.innerHTML += `<div class="nav-item ${activeCatFilter === cat.id ? 'active' : ''}" onclick="setCatFilter('${cat.id}')"><i class="fa-solid fa-circle" style="color:${cat.color}"></i> ${sanitize(cat.name)}</div>`; 
+            });
+        }
+        
+        function setCatFilter(id) { 
+            activeCatFilter = id; 
+            renderCategories(); 
+            renderContent(); 
+            if(window.innerWidth <= 768) {
+                document.getElementById('sidebar').classList.remove('open');
+            }
+        }
+
+        function toggleHiddenItems() { 
+            showHiddenTimeGated = !showHiddenTimeGated; 
+            const btn = document.getElementById('btn-show-hidden'); 
+            if(btn) {
+                btn.style.color = showHiddenTimeGated ? "var(--bg)" : "var(--text-muted)"; 
+                btn.style.background = showHiddenTimeGated ? "var(--warning)" : "transparent"; 
+            }
+            renderContent(); 
+        }
+
+        function checkExpiry(dateString) { 
+            if(!dateString) return ""; 
+            let exp = new Date(dateString);
+            let today = new Date(); 
+            today.setHours(0,0,0,0); 
+            
+            let diff = Math.ceil((exp - today) / (1000 * 60 * 60 * 24)); 
+            
+            if (diff < 0) return "<span class='sup-badge' style='background:var(--danger); color:white; border-color:var(--danger);'>ANOMALIA: SCADUTO</span>"; 
+            if (diff === 0) return "<span class='sup-badge' style='background:var(--warning); color:white; border-color:var(--warning);'>CRITICO: OGGI</span>"; 
+            if (diff <= 2) return `<span class='sup-badge' style='background:var(--warning); color:white; border-color:var(--warning);'>${diff}gg Rimasti</span>`; 
+            return `<span class='sup-badge'>Scadenza: ${exp.toLocaleDateString('it-IT')}</span>`; 
+        }
+
+        // --- 11. MOTORE TABELLARE IBRIDO ---
+        function renderContent() {
+            const container = document.getElementById('main-content'); 
+            if(!container) return;
+            container.innerHTML = ''; 
+            
+            const searchInput = document.getElementById('search-input');
+            const query = searchInput ? searchInput.value.toLowerCase().trim() : ''; 
+            
+            if(!activeSede || !activeFolder || !appStructure.sedi[activeSede].folders[activeFolder]) return;
+            
+            const folder = appStructure.sedi[activeSede].folders[activeFolder];
+            const currentDayNum = new Date().getDay(); 
+            
+            const btnPaste = document.getElementById('floating-paste-btn');
+            if (btnPaste) {
+                btnPaste.style.display = (clipboardSection && editMode) ? 'flex' : 'none'; 
+            }
+            
+            folder.sections.forEach(sec => {
+                let itemsToShow = sec.items.filter(i => { 
+                    const matchCat = activeCatFilter === 'tutti' || i.catId === activeCatFilter; 
+                    const matchSearch = query === '' || i.n.toLowerCase().includes(query); 
+                    const isToday = !i.days || i.days.length === 0 || i.days.includes(currentDayNum);
+                    const matchTime = editMode || showHiddenTimeGated || isToday;
+                    return matchCat && matchSearch && matchTime; 
+                });
+                
+                if (isFifo) {
+                    itemsToShow.sort((a,b) => { 
+                        let da = a.expiry ? new Date(a.expiry).getTime() : 9999999999999; 
+                        let db = b.expiry ? new Date(b.expiry).getTime() : 9999999999999; 
+                        return da - db; 
+                    });
+                }
+                
+                if(itemsToShow.length === 0 && !editMode) return;
+
+                const card = document.createElement('div'); 
+                card.className = 'card';
+                
+                let html = `
+                    <div class="card-header" style="background:${sec.color}">
+                        <span>${sanitize(sec.name)}</span>
+                        ${editMode && query === '' && !isFifo ? `
+                        <div style="display:flex; gap:16px;">
+                            <i class="fa-solid fa-copy" style="cursor:pointer;" onclick="copySection('${sec.id}')" title="Clona Matrice"></i>
+                            <i class="fa-solid fa-arrow-up" style="cursor:pointer;" onclick="moveSection('${sec.id}', -1)"></i>
+                            <i class="fa-solid fa-arrow-down" style="cursor:pointer;" onclick="moveSection('${sec.id}', 1)"></i>
+                            <i class="fa-solid fa-pen" style="cursor:pointer;" onclick="openSectionModal('${sec.id}')"></i>
+                            <i class="fa-solid fa-trash" style="cursor:pointer; color:rgba(255,255,255,0.6);" onclick="deleteSection('${sec.id}')"></i>
+                        </div>` : ''}
+                        <div class="card-progress-bg"><div class="card-progress-fill" id="prog-${sec.id}"></div></div>
+                    </div>
+                    <div class="table-container"><table>`;
+                
+                itemsToShow.forEach(item => {
+                    const k = `${activeSede}_${activeFolder}_${sec.id}_${item.id}`; 
+                    let st = appState[k] || {fare: false, comprare: false, n_fare: '', n_comprare: '', q: 0}; 
+
+                    const cat = appStructure.sedi[activeSede].categories.find(c => c.id === item.catId) || {name: 'NULL', color: '#ccc', type: 'standard'};
+                    
+                    const badge = `<span class="role-badge" style="background:${cat.color}">${sanitize(cat.name).toUpperCase()}</span>`;
+                    const expAlert = checkExpiry(item.expiry); 
+                    
+                    let metaInfo = "";
+                    if(cat.type !== 'magazzino') { 
+                        if(item.l) metaInfo += `<b>L:</b> ${sanitize(item.l)} `; 
+                        if(item.s) metaInfo += `${metaInfo ? '<span style="color:var(--border);">|</span> ' : ''}<b>S:</b> ${sanitize(item.s)} `; 
+                    } else { 
+                        if(item.idealQty) metaInfo += `<b>Target:</b> ${item.idealQty} `; 
+                        if(item.uom && item.uom.trim() !== '') metaInfo += `<span class="uom-badge">${sanitize(item.uom)}</span> `;
+                    }
+                    
+                    if(item.supplierCatId) {
+                        const supCat = (appStructure.sedi[activeSede].supplierCategories || []).find(s => s.id === item.supplierCatId);
+                        if(supCat) metaInfo += `${metaInfo ? '<span style="color:var(--border);">|</span> ' : ''}<span class="cat-badge"><i class="fa-solid fa-truck"></i> ${sanitize(supCat.name)}</span> `;
+                    } else if (item.supplier) {
+                        metaInfo += `${metaInfo ? '<span style="color:var(--border);">|</span> ' : ''}<span class="sup-badge"><i class="fa-solid fa-truck"></i> ${sanitize(item.supplier)}</span> `;
+                    }
+
+                    if (item.info && item.info.trim() !== "") {
+                        metaInfo += `${metaInfo ? '<span style="color:var(--border);">|</span> ' : ''}<span class="info-badge" onclick="openInfoModal('${sec.id}', '${item.id}')"><i class="fa-solid fa-book-open"></i> Info / Ricetta</span> `;
+                    }
+
+                    const isOutOfSchedule = !editMode && item.days && item.days.length > 0 && !item.days.includes(currentDayNum);
+                    if(isOutOfSchedule) {
+                        metaInfo += ` <span style="font-size:0.75rem; color:var(--warning); font-weight:800; border:1px solid var(--warning); padding:2px 6px; border-radius:4px;"><i class="fa-solid fa-eye"></i> OVERRIDE EXTRA</span>`;
+                    }
+                    
+                    if(expAlert) metaInfo += `${metaInfo ? '<span style="color:var(--border);">|</span> ' : ''}${expAlert}`;
+
+                    let action = '';
+                    if(cat.type === 'magazzino') { 
+                        // INPUT IBRIDO V13.1 (Risoluzione dei 100 click)
+                        action = `
+                        <div class="qty-hybrid-container">
+                            <button class="btn-icon" onclick="updateQty('${k}', -1)"><i class="fa-solid fa-minus" style="font-size:0.8rem;"></i></button>
+                            <input type="number" class="qty-input" id="qty-${k}" value="${st.q || 0}" onblur="updateQtyDirect('${k}', this.value)" onchange="updateQtyDirect('${k}', this.value)">
+                            <button class="btn-icon plus" onclick="updateQty('${k}', 1)"><i class="fa-solid fa-plus" style="font-size:0.8rem;"></i></button>
+                        </div>`; 
+                    } else { 
+                        action = `
+                        <div class="actions-wrapper">
+                            <button id="btn-comprare-${k}" class="action-btn comprare ${st.comprare ? 'active' : ''}" onclick="toggleStateAction('${k}', 'comprare', '${sec.id}')" title="Aggiungi agli Ordini"><i class="fa-solid fa-cart-shopping"></i></button>
+                            <button id="btn-fare-${k}" class="action-btn fare ${st.fare ? 'active' : ''}" onclick="toggleStateAction('${k}', 'fare', '${sec.id}')" title="Segna Completato"><i class="fa-solid fa-kitchen-set"></i></button>
+                        </div>`; 
+                    }
+
+                    const rowClass = (st.fare && cat.type !== 'magazzino') ? 'is-done' : '';
+
+                    html += `
+                        <tr id="row-${k}" class="${rowClass} ${isOutOfSchedule ? 'out-of-schedule' : ''}">
+                            <td>
+                                <span class="prod-name">${sanitize(item.n)} ${badge}</span>
+                                <span class="prod-meta">${metaInfo}</span>
+                                ${editMode && query === '' && !isFifo ? `
+                                <div class="edit-tools">
+                                    <button class="btn-action" style="padding:10px; background:var(--bg); border:1px solid var(--border); width:auto;" onclick="moveItem('${sec.id}','${item.id}', -1)"><i class="fa-solid fa-arrow-up"></i></button>
+                                    <button class="btn-action" style="padding:10px; background:var(--bg); border:1px solid var(--border); width:auto;" onclick="moveItem('${sec.id}','${item.id}', 1)"><i class="fa-solid fa-arrow-down"></i></button>
+                                    <button class="btn-action" style="padding:10px; background:var(--warning); color:#000; width:auto;" onclick="openItemModal('${sec.id}','${item.id}')"><i class="fa-solid fa-pen"></i></button>
+                                    <button class="btn-action" style="padding:10px; background:var(--danger); color:white; width:auto;" onclick="deleteItem('${sec.id}','${item.id}')"><i class="fa-solid fa-trash"></i></button>
+                                </div>` : ''}
+                            </td>
+                            <td>
+                                <div class="note-wrapper">
+                                    <input type="text" class="note-input comprare-note" value="${sanitize(st.n_comprare)}" onblur="updateState('${k}','n_comprare',this.value)" placeholder="Note per l'Acquisto (Azzurro)...">
+                                    <input type="text" class="note-input fare-note" value="${sanitize(st.n_fare)}" onblur="updateState('${k}','n_fare',this.value)" placeholder="Note per la Brigata (Arancio)...">
+                                </div>
+                            </td>
+                            <td>${action}</td>
+                        </tr>`;
+                });
+                
+                html += `</table></div>`;
+                
+                if(editMode && query === '') {
+                    html += `<button class="btn-action" style="background:rgba(14, 165, 233, 0.05); color:var(--accent); border-radius: 0 0 var(--radius-xl) var(--radius-xl); margin-top:0;" onclick="openItemModal('${sec.id}')"><i class="fa-solid fa-plus"></i> ALLOCA NUOVO PRODOTTO</button>`;
+                }
+                
+                card.innerHTML = html; 
+                container.appendChild(card);
+                
+                // Inizializzazione della barra di progresso
+                updateProgressBar(sec.id);
+            });
+            
+            if(editMode && query === '') { 
+                const b = document.createElement('button'); 
+                b.className = 'btn-action'; 
+                b.style.background = 'var(--success)'; 
+                b.style.color = 'white'; 
+                b.style.padding = '24px'; 
+                b.style.border = '2px dashed rgba(255,255,255,0.5)'; 
+                b.innerHTML = '<i class="fa-solid fa-plus"></i> COSTRUISCI NUOVA CELLA LOGICA'; 
+                b.onclick = () => openSectionModal(); 
+                container.appendChild(b); 
+            }
+        }
+
+        // --- 12. DOM CHIRURGICO (NO REFLOW) ---
+        function updateProgressBar(secId) {
+            const pb = document.getElementById(`prog-${secId}`);
+            if(!pb) return;
+            const sec = appStructure.sedi[activeSede].folders[activeFolder].sections.find(s => s.id === secId);
+            if(!sec) return;
+            
+            let done = 0, tot = 0;
+            sec.items.forEach(i => {
+                const cat = appStructure.sedi[activeSede].categories.find(c => c.id === i.catId) || {};
+                if(cat.type !== 'magazzino') {
+                    tot++;
+                    const st = appState[`${activeSede}_${activeFolder}_${secId}_${i.id}`];
+                    if(st && st.fare) done++;
+                }
+            });
+            
+            if(tot > 0) {
+                const p = Math.round((done / tot) * 100);
+                pb.style.width = p + '%';
+                pb.style.background = p === 100 ? 'var(--success)' : 'rgba(255,255,255,0.9)';
+            } else {
+                pb.style.width = '0%';
+            }
+        }
+
+        // Manipolazione isolata per annullare il reset della pagina
+        function toggleStateAction(k, actionType, secId) { 
+            if(!appState[k]) appState[k] = { fare: false, comprare: false, n_fare: '', n_comprare: '', q: 0 }; 
+            appState[k][actionType] = !appState[k][actionType]; 
+            saveState(); 
+            
+            const btn = document.getElementById(`btn-${actionType}-${k}`);
+            if(btn) {
+                if (appState[k][actionType]) btn.classList.add('active');
+                else btn.classList.remove('active');
+            }
+            
+            if(actionType === 'fare') {
+                const row = document.getElementById(`row-${k}`);
+                if(row) {
+                    if (appState[k].fare) row.classList.add('is-done');
+                    else row.classList.remove('is-done');
+                }
+                updateProgressBar(secId);
+            }
+
+            if(navigator.vibrate && appState[k][actionType]) {
+                try { navigator.vibrate(40); } catch(e) {}
+            }
+        }
+        
+        function updateState(k, f, v) { 
+            if(!appState[k]) appState[k] = { fare: false, comprare: false, n_fare: '', n_comprare: '', q: 0 }; 
+            appState[k][f] = sanitize(v); 
+            saveState(); 
+        }
+
+        function updateQty(k, delta) { 
+            if(!appState[k]) appState[k] = { fare: false, comprare: false, n_fare: '', n_comprare: '', q: 0 }; 
+            appState[k].q = Math.max(0, (appState[k].q || 0) + delta); 
+            saveState(); 
+            
+            const input = document.getElementById(`qty-${k}`);
+            if(input) input.value = appState[k].q;
+            
+            if(navigator.vibrate) {
+                try { navigator.vibrate(20); } catch(e) {}
+            }
+        }
+
+        function updateQtyDirect(k, val) {
+            if(!appState[k]) appState[k] = { fare: false, comprare: false, n_fare: '', n_comprare: '', q: 0 }; 
+            let parsed = parseInt(val, 10);
+            appState[k].q = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+            saveState();
+            
+            const input = document.getElementById(`qty-${k}`);
+            if(input) input.value = appState[k].q; 
+        }
+
+        function smartReset(isAuto = false) { 
+            if(isAuto || confirm("[WARNING] Inizializzare la purga totale del turno odierno? Eliminerà spunte e vettori.")) { 
+                for(let k in appState) { 
+                    appState[k].fare = false; 
+                    appState[k].comprare = false; 
+                    appState[k].n_fare = ''; 
+                    appState[k].n_comprare = ''; 
+                } 
+                saveState(); 
+                renderContent(); 
+                if(!isAuto) showToast("Turno purgato e azzerato.", "success"); 
+            } 
+        }
+
+        // --- 13. APPUNTI GLOBALI: CLONAZIONE MATRICE ---
+        function copySection(secId) {
+            const original = appStructure.sedi[activeSede].folders[activeFolder].sections.find(s => s.id === secId);
+            if(original) {
+                clipboardSection = JSON.parse(JSON.stringify(original));
+                showToast("Matrice acquisita in cache.", "info");
+                renderContent();
+            }
+        }
+
+        function pasteSection() {
+            if(!clipboardSection) return;
+            let clonedSec = JSON.parse(JSON.stringify(clipboardSection));
+            clonedSec.id = 's_' + generateId();
+            clonedSec.name = clonedSec.name + " (Clone)";
+            clonedSec.items.forEach(item => { 
+                item.id = 'i_' + generateId(); 
+            });
+
+            appStructure.sedi[activeSede].folders[activeFolder].sections.push(clonedSec);
+            saveStructure(); 
+            renderContent();
+            showToast("Matrice innestata correttamente.", "success");
+        }
+
+        // --- 14. GESTIONE PRODOTTI E METRICHE UoM ---
+        function openInfoModal(secId, itemId) {
+            const sec = appStructure.sedi[activeSede].folders[activeFolder].sections.find(s => s.id === secId);
+            if (!sec) return;
+            const item = sec.items.find(i => i.id === itemId);
+            if (!item || !item.info) return;
+
+            document.getElementById('read-info-title').innerText = "Vettore Info: " + sanitize(item.n);
+            document.getElementById('read-info-content').innerHTML = sanitize(item.info).replace(/\n/g, '<br>');
+            showModal('modal-info');
+        }
+
+        function toggleItemFields() { 
+            const catId = document.getElementById('input-item-cat').value; 
+            const cat = appStructure.sedi[activeSede].categories.find(c => c.id === catId); 
+            const wLS = document.getElementById('wrapper-ls'); 
+            const wIdeal = document.getElementById('wrapper-ideal'); 
+            const inputUom = document.getElementById('input-item-uom');
+            
+            if (cat && cat.type === 'magazzino') { 
+                wIdeal.style.display = 'block'; 
+                wLS.style.display = 'none'; 
+                if(inputUom) inputUom.parentElement.style.display = 'block';
+            } else { 
+                wIdeal.style.display = 'none'; 
+                wLS.style.display = 'flex'; 
+                if(inputUom) inputUom.parentElement.style.display = 'none';
+            } 
+        }
+
+        function toggleDay(el) { 
+            const d = parseInt(el.getAttribute('data-day')); 
+            el.classList.toggle('active'); 
+            if(activeItemDays.includes(d)) {
+                activeItemDays = activeItemDays.filter(x => x !== d); 
+            } else {
+                activeItemDays.push(d); 
+            }
+        }
+        
+        function openItemModal(secId, itemId = null) {
+            currentEdit = { action: itemId ? 'edit' : 'new', secId: secId, itemId: itemId }; 
+            activeItemDays = [];
+            
+            const sel = document.getElementById('input-item-cat'); 
+            sel.innerHTML = '';
+            appStructure.sedi[activeSede].categories.forEach(c => {
+                sel.innerHTML += `<option value="${c.id}">${sanitize(c.name)}</option>`;
+            });
+
+            const supSel = document.getElementById('input-item-supplier-cat'); 
+            supSel.innerHTML = '<option value="">-- Nessun Fornitore Specifico --</option>';
+            (appStructure.sedi[activeSede].supplierCategories || []).forEach(sup => {
+                supSel.innerHTML += `<option value="${sup.id}">${sanitize(sup.name)}</option>`;
+            });
+
+            document.querySelectorAll('.day-chip').forEach(el => el.classList.remove('active'));
+            
+            if(itemId) {
+                const i = appStructure.sedi[activeSede].folders[activeFolder].sections.find(s => s.id === secId).items.find(x => x.id === itemId);
+                document.getElementById('input-item-name').value = i.n || ''; 
+                document.getElementById('input-item-cat').value = i.catId || appStructure.sedi[activeSede].categories[0].id; 
+                document.getElementById('input-item-supplier-cat').value = i.supplierCatId || ''; 
+                document.getElementById('input-item-line').value = i.l || ''; 
+                document.getElementById('input-item-stock').value = i.s || ''; 
+                document.getElementById('input-item-ideal').value = i.idealQty || ''; 
+                document.getElementById('input-item-uom').value = i.uom || ''; // UoM Integrato
+                document.getElementById('input-item-cost').value = i.cost || ''; 
+                document.getElementById('input-item-expiry').value = i.expiry || ''; 
+                document.getElementById('input-item-info').value = i.info || '';
+                
+                if(i.days) { 
+                    activeItemDays = i.days; 
+                    i.days.forEach(d => { 
+                        const chip = document.querySelector(`.day-chip[data-day="${d}"]`); 
+                        if(chip) chip.classList.add('active'); 
+                    }); 
+                }
+            } else { 
+                ['name','line','stock','ideal','uom','cost','expiry','info'].forEach(id => {
+                    document.getElementById('input-item-' + id).value = '';
+                }); 
+                document.getElementById('input-item-supplier-cat').value = '';
+            }
+            toggleItemFields(); 
+            showModal('modal-item');
+        }
+
+        function saveItem() {
+            const n = sanitize(document.getElementById('input-item-name').value); 
+            if(!n) return showToast("Identificativo prodotto mancante", "error");
+            
+            const sec = appStructure.sedi[activeSede].folders[activeFolder].sections.find(s => s.id === currentEdit.secId);
+            const catId = document.getElementById('input-item-cat').value; 
+            const cat = appStructure.sedi[activeSede].categories.find(c => c.id === catId);
+            const supplierCatId = document.getElementById('input-item-supplier-cat').value;
+            const infoText = sanitize(document.getElementById('input-item-info').value);
+
+            const d = { 
+                n: n, 
+                catId: catId, 
+                supplierCatId: supplierCatId, 
+                days: activeItemDays, 
+                cost: parseFloat(document.getElementById('input-item-cost').value) || 0, 
+                expiry: document.getElementById('input-item-expiry').value, 
+                info: infoText 
+            };
+            
+            if (cat.type === 'magazzino') { 
+                d.idealQty = parseFloat(document.getElementById('input-item-ideal').value) || 0; 
+                d.uom = sanitize(document.getElementById('input-item-uom').value); // Salvataggio UoM
+                d.l = ""; 
+                d.s = ""; 
+            } else { 
+                d.l = sanitize(document.getElementById('input-item-line').value); 
+                d.s = sanitize(document.getElementById('input-item-stock').value); 
+                d.idealQty = 0; 
+                d.uom = "";
+            }
+            
+            if(currentEdit.action === 'edit') { 
+                let i = sec.items.find(x => x.id === currentEdit.itemId); 
+                Object.assign(i, d); 
+            } else { 
+                d.id = 'i_' + generateId(); 
+                sec.items.push(d); 
+            }
+            
+            saveStructure(); 
+            closeModals(); 
+            renderContent(); 
+            showToast("Nodo di Calcolo Allocato", "success");
+        }
+
+        function deleteItem(secId, itemId) { 
+            if(confirm("Rimuovere definitivamente l'elemento dalla matrice?")) { 
+                const s = appStructure.sedi[activeSede].folders[activeFolder].sections.find(x => x.id === secId); 
+                s.items = s.items.filter(x => x.id !== itemId); 
+                saveStructure(); 
+                renderContent(); 
+            } 
+        }
+        
+        function moveSection(secId, dir) { 
+            let a = appStructure.sedi[activeSede].folders[activeFolder].sections; 
+            let i = a.findIndex(s => s.id === secId); 
+            if(i < 0 || (dir === -1 && i === 0) || (dir === 1 && i === a.length - 1)) return; 
+            [a[i], a[i+dir]] = [a[i+dir], a[i]]; 
+            saveStructure(); 
+            renderContent(); 
+        }
+        
+        function moveItem(secId, itemId, dir) { 
+            let a = appStructure.sedi[activeSede].folders[activeFolder].sections.find(s => s.id === secId).items; 
+            let i = a.findIndex(x => x.id === itemId); 
+            if(i < 0 || (dir === -1 && i === 0) || (dir === 1 && i === a.length - 1)) return; 
+            [a[i], a[i+dir]] = [a[i+dir], a[i]]; 
+            saveStructure(); 
+            renderContent(); 
+        }
+        // --- 15. TELEMETRIA E KPI (CRUSCOTTO MANAGER) ---
+        function openDashboard() {
+            if(!activeSede || !activeFolder) return;
+            const isManager = (activeProfile === 'admin');
+            const fol = appStructure.sedi[activeSede].folders[activeFolder]; 
+            let totVal = 0, expCount = 0, donePrep = 0, totPrep = 0; 
+            const today = new Date(); 
+            today.setHours(0,0,0,0);
+            
+            fol.sections.forEach(sec => {
+                sec.items.forEach(i => {
+                    const k = `${activeSede}_${activeFolder}_${sec.id}_${i.id}`; 
+                    const st = appState[k] || {fare: false, comprare: false, q: 0};
+                    const cat = appStructure.sedi[activeSede].categories.find(c => c.id === i.catId) || {type: 'standard'};
+                    
+                    if(cat.type === 'magazzino') { 
+                        if(i.cost) totVal += ((st.q || 0) * i.cost); 
+                    } else { 
+                        totPrep++; 
+                        if(st.fare) donePrep++; 
+                    }
+                    if(i.expiry) { 
+                        let exp = new Date(i.expiry); 
+                        exp.setHours(0,0,0,0); 
+                        if(exp <= today) expCount++; 
+                    }
+                });
+            });
+            
+            document.getElementById('dash-val').innerText = isManager ? "€ " + totVal.toFixed(2) : "🔒 ROOT ONLY"; 
+            document.getElementById('dash-exp').innerText = expCount;
+            document.getElementById('dash-prog').innerText = totPrep > 0 ? Math.round((donePrep/totPrep)*100) + "%" : "100%";
+            showModal('modal-dashboard');
+        }
+
+        // --- 16. SINTESI REPORTISTICA V13.1 (MATEMATICA UoM INTEGRATA) ---
+        let reportTextFare = "";
+        let reportTextComprare = "";
+        let csvDataFare = [];
+        let csvDataComprare = [];
+
+        function switchReportTab(tab) {
+            currentReportTab = tab;
+            document.getElementById('tab-report-fare').classList.toggle('active', tab === 'fare');
+            document.getElementById('tab-report-comprare').classList.toggle('active', tab === 'comprare');
+            document.getElementById('report-preview-fare').style.display = tab === 'fare' ? 'block' : 'none';
+            document.getElementById('report-preview-comprare').style.display = tab === 'comprare' ? 'block' : 'none';
+        }
+
+        function openReportModal() { 
+            buildReports(); 
+            switchReportTab('fare'); 
+            showModal('modal-report'); 
+            if(window.innerWidth <= 768) {
+                document.getElementById('sidebar').classList.remove('open'); 
+            }
+        }
+
+        function buildReports() {
+            if(!activeSede || !activeFolder) return; 
+            const fol = appStructure.sedi[activeSede].folders[activeFolder]; 
+            const isManager = (activeProfile === 'admin');
+            const role = !isManager ? appStructure.sedi[activeSede].roles.find(r => r.id === activeProfile) : null;
+            const allowedCats = role ? role.allowedCats : null;
+
+            let fareGrouped = {};     
+            let comprareGrouped = {}; 
+            csvDataFare = []; 
+            csvDataComprare = [];
+
+            fol.sections.forEach(sec => { 
+                sec.items.forEach(i => { 
+                    // Filtro Risonanza RBAC
+                    if (!isManager && allowedCats && !allowedCats.includes(i.catId)) return;
+
+                    const k = `${activeSede}_${activeFolder}_${sec.id}_${i.id}`; 
+                    const st = appState[k] || {fare: false, comprare: false, n_fare: '', n_comprare: '', q: 0}; 
+                    const cat = appStructure.sedi[activeSede].categories.find(c => c.id === i.catId) || {name: 'NON CLASSIFICATO', type: 'standard'}; 
+                    
+                    // VETTORE 1: LOGICA CUCINA (DA FARE)
+                    if(st.fare || (st.n_fare && st.n_fare.trim() !== "")) { 
+                        let catName = sanitize(cat.name).toUpperCase();
+                        if(!fareGrouped[catName]) fareGrouped[catName] = [];
+                        let infoFare = st.n_fare && st.n_fare.trim() !== "" ? sanitize(st.n_fare) : "Operazione Richiesta";
+                        fareGrouped[catName].push({prod: sanitize(i.n), nota: infoFare, sec: sanitize(sec.name)});
+                        csvDataFare.push({ type: "CUCINA", group: catName, sec: sanitize(sec.name), prod: sanitize(i.n), val: infoFare });
+                    }
+
+                    // VETTORE 2: LOGICA APPROVVIGIONAMENTO E MATEMATICA UoM (DA COMPRARE)
+                    let addToComprare = false;
+                    let toBuyVal = "";
+
+                    if(st.comprare) {
+                        addToComprare = true;
+                        toBuyVal = st.n_comprare && st.n_comprare.trim() !== "" ? sanitize(st.n_comprare) : "Includere nell'ordine";
+                    } else if (st.n_comprare && st.n_comprare.trim() !== "") {
+                        addToComprare = true;
+                        toBuyVal = sanitize(st.n_comprare);
+                    } else if (cat.type === 'magazzino' && st.q !== undefined && i.idealQty && st.q < i.idealQty) {
+                        addToComprare = true;
+                        let diff = i.idealQty - st.q;
+                        let uomLabel = i.uom && i.uom.trim() !== "" ? " " + sanitize(i.uom) : " Unità";
+                        toBuyVal = st.n_comprare && st.n_comprare.trim() !== "" ? sanitize(st.n_comprare) : ("Deficit: " + diff + uomLabel);
+                    }
+
+                    if(addToComprare) {
+                        let supName = 'FORNITURA GLOBALE';
+                        if (i.supplierCatId) {
+                            const supObj = (appStructure.sedi[activeSede].supplierCategories || []).find(s => s.id === i.supplierCatId);
+                            if (supObj) supName = sanitize(supObj.name).toUpperCase();
+                        } else if (i.supplier) {
+                            supName = sanitize(i.supplier).toUpperCase();
+                        }
+
+                        if(!comprareGrouped[supName]) comprareGrouped[supName] = [];
+                        comprareGrouped[supName].push({prod: sanitize(i.n), nota: toBuyVal, sec: sanitize(sec.name)});
+                        csvDataComprare.push({ type: "ORDINE", group: supName, sec: sanitize(sec.name), prod: sanitize(i.n), val: toBuyVal });
+                    }
+                }); 
+            });
+
+            // SINTESI TESTUALE PER TRASMISSIONE ESTERNA
+            reportTextFare = "";
+            if(Object.keys(fareGrouped).length > 0) {
+                reportTextFare += `🔪 SINTESI OPERAZIONI CUCINA:\n`;
+                for(let cat in fareGrouped) {
+                    reportTextFare += `\n[ ${cat} ]\n`;
+                    fareGrouped[cat].forEach(p => reportTextFare += `• ${p.prod} (${p.sec}): ${p.nota}\n`);
+                }
+            } else { 
+                reportTextFare = "✅ Nessuna operazione in sospeso nella Matrice Cucina."; 
+            }
+
+            reportTextComprare = "";
+            if(Object.keys(comprareGrouped).length > 0) {
+                reportTextComprare += `🛒 MATRICE ORDINI GENERATA:\n`;
+                for(let sup in comprareGrouped) {
+                    reportTextComprare += `\n[ ${sup} ]\n`;
+                    comprareGrouped[sup].forEach(o => reportTextComprare += `• ${o.prod}: ${o.nota}\n`);
+                }
+            } else { 
+                reportTextComprare = "✅ Nessun deficit rilevato nel Magazzino."; 
+            }
+
+            // RENDERING VISIVO: MODALE CUCINA
+            let htmlFare = `<div style="font-family: inherit;">`;
+            if(Object.keys(fareGrouped).length === 0) { 
+                htmlFare += `<div style="text-align:center; padding:40px 20px; color:var(--success); background:rgba(16, 185, 129, 0.05); border: 1px dashed var(--success); border-radius:var(--radius-lg);"><i class="fa-solid fa-kitchen-set" style="font-size:48px; margin-bottom:16px;"></i><br><b style="font-size:1.2rem;">Linea Completa!</b><br><span style="font-size:0.9rem; color:var(--text-muted); display:block; margin-top:8px;">La matrice non richiede interventi.</span></div>`; 
+            } else {
+                for(let cat in fareGrouped) {
+                    htmlFare += `<div style="margin-bottom:24px;"><div style="font-size:0.75rem; font-weight:800; color:var(--warning); margin-bottom:12px; letter-spacing:1px; text-transform:uppercase;"><i class="fa-solid fa-layer-group"></i> ${cat}</div>`;
+                    fareGrouped[cat].forEach(p => { 
+                        htmlFare += `<div style="background:rgba(245, 158, 11, 0.05); border-left:4px solid var(--warning); padding:14px 16px; margin-bottom:10px; border-radius:0 var(--radius-md) var(--radius-md) 0;"><div style="font-weight:800; font-size:1rem; color:var(--text);">${p.prod} <span style="font-size:0.8rem; font-weight:600; color:var(--text-muted);">(${p.sec})</span></div><div style="color:#b45309; font-size:0.9rem; margin-top:6px; font-weight:600;">${p.nota}</div></div>`; 
+                    });
+                    htmlFare += `</div>`;
+                }
+            }
+            htmlFare += `</div>`;
+            document.getElementById('report-preview-fare').innerHTML = htmlFare;
+
+            // RENDERING VISIVO: MODALE ORDINI
+            let htmlComp = `<div style="font-family: inherit;">`;
+            if(Object.keys(comprareGrouped).length === 0) { 
+                htmlComp += `<div style="text-align:center; padding:40px 20px; color:var(--success); background:rgba(16, 185, 129, 0.05); border: 1px dashed var(--success); border-radius:var(--radius-lg);"><i class="fa-solid fa-basket-shopping" style="font-size:48px; margin-bottom:16px;"></i><br><b style="font-size:1.2rem;">Riserve Ottimali!</b><br><span style="font-size:0.9rem; color:var(--text-muted); display:block; margin-top:8px;">Nessuna fornitura richiesta.</span></div>`; 
+            } else {
+                for(let sup in comprareGrouped) {
+                    htmlComp += `<div style="background:var(--bg); padding:16px; border-radius:var(--radius-lg); margin-bottom:16px; border:1px solid var(--border); box-shadow:var(--shadow-sm);"><div style="font-size:0.75rem; font-weight:800; color:var(--text-muted); margin-bottom:16px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border); padding-bottom:12px;"><i class="fa-solid fa-truck"></i> FORNITORE: ${sup}</div>`;
+                    comprareGrouped[sup].forEach(o => { 
+                        htmlComp += `<div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom: 1px dashed var(--border);"><span style="font-size:0.95rem; font-weight:600;">${o.prod}</span><span style="background:var(--accent); color:white; padding:4px 12px; border-radius:100px; font-weight:800; font-size:0.85rem; text-align:right;">${o.nota}</span></div>`; 
+                    });
+                    htmlComp += `</div>`;
+                }
+            }
+            htmlComp += `</div>`;
+            document.getElementById('report-preview-comprare').innerHTML = htmlComp;
+        }
+
+        function copyReportText() { 
+            const txt = currentReportTab === 'fare' ? reportTextFare : reportTextComprare;
+            if(!txt) return; 
+            
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(txt).then(() => { 
+                    showToast("Dati copiati per trasmissione esterna.", "success"); 
+                }).catch(() => { 
+                    window.open("https://wa.me/?text=" + encodeURIComponent(txt), '_blank'); 
+                });
+            } else {
+                window.open("https://wa.me/?text=" + encodeURIComponent(txt), '_blank'); 
+            }
+        }
+        
+        function downloadReportExcel() { 
+            const data = currentReportTab === 'fare' ? csvDataFare : csvDataComprare;
+            if(data.length === 0) return showToast("Matrice vuota. Esportazione abortita.", "error"); 
+            
+            let csv = "data:text/csv;charset=utf-8,\uFEFFTIPO;GRUPPO;SETTORE;PRODOTTO;DETTAGLIO\n"; 
+            data.forEach(r => { 
+                csv += `"${r.type}";"${r.group}";"${r.sec}";"${r.prod}";"${r.val}"\n`; 
+            }); 
+            
+            const l = document.createElement("a"); 
+            l.setAttribute("href", encodeURI(csv)); 
+            l.setAttribute("download", `ERP_Report_${currentReportTab.toUpperCase()}.csv`); 
+            document.body.appendChild(l); 
+            l.click(); 
+            document.body.removeChild(l); 
+        }
+
+        // --- 17. KERNEL CLOUD & RISOLUTORE ALIAS (BLINDATO) ---
+        async function resolveAliasToId(alias) {
+            let realId = alias;
+            if (alias && alias.length < 24) { 
+                try {
+                    let res = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/CucinaERP_${alias.toLowerCase()}`);
+                    if(!res.ok) return null;
+                    
+                    let val = await res.text();
+                    if(val && val.length > 10 && !val.includes("Error") && !val.includes("null")) {
+                        realId = val.replace(/"/g, '').trim();
+                    } else {
+                        return null; 
+                    }
+                } catch(e) { 
+                    console.warn("[Cloud Engine] Decodifica Alias fallita:", e); 
+                    return null; 
+                }
+            }
+            return realId;
+        }
+
+        async function registerAliasMapping(alias, hubId) {
+            if (alias && alias.length < 24) {
+                try { 
+                    await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/CucinaERP_${alias.toLowerCase()}/${hubId}`, { method: 'POST' }); 
+                } catch(e) {
+                    console.warn("[Cloud Engine] Aggiornamento registro KV fallito:", e);
+                }
+            }
+        }
+
+        function openCloudHub() { 
+            showModal('modal-cloud'); 
+            const listEl = document.getElementById('cloud-versions-list'); 
+            const savedAlias = localStorage.getItem('cucina_v13_alias') || localStorage.getItem('cucina_v12_alias') || localStorage.getItem('cucina_v11_alias');
+            const savedHubId = localStorage.getItem('cucina_v9_hub_id');
+            
+            document.getElementById('cloud-alias-input').value = savedAlias || savedHubId || ''; 
+            document.getElementById('cloud-status-message').style.display = 'none';
+            
+            if(!savedHubId) { 
+                listEl.innerHTML = `<div style="text-align:center; padding: 24px; border: 2px dashed var(--border); border-radius:var(--radius-md); color:var(--text-muted); font-weight:600; font-size:0.85rem;">Nessun nodo di rete rilevato. Inserisci l'Alias aziendale.</div>`; 
+                return; 
+            } 
+            fetchCloudVersions(savedHubId, listEl);
+        }
+
+        async function fetchCloudVersions(hubId, listEl) {
+            listEl.innerHTML = `<div style="text-align:center; padding:30px; color:var(--accent); font-weight:700;"><i class="fa-solid fa-spinner fa-spin"></i> Ping server in corso...</div>`; 
+            try { 
+                const res = await fetch(`https://api.jsonbin.io/v3/b/${hubId}/latest`, { 
+                    headers: { 'X-Master-Key': CLOUD_KEY } 
+                }); 
+                
+                if(!res.ok) throw new Error("Rete Inaccessibile");
+                
+                const data = await res.json(); 
+                if(data.record && data.record.metadata) { 
+                    const meta = data.record.metadata; 
+                    listEl.innerHTML = `
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg); border:1px solid var(--border); padding:20px; border-radius:var(--radius-lg); box-shadow:var(--shadow-sm);">
+                            <div>
+                                <div style="font-size: 1.1rem; font-weight:800; color:var(--primary);">${sanitize(meta.version_name)}</div>
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top:6px;"><i class="fa-regular fa-clock"></i> ${new Date(meta.timestamp).toLocaleString('it-IT')}</div>
+                            </div>
+                            <div style="color:var(--success); font-weight:800; font-size:0.85rem;"><i class="fa-solid fa-check"></i> Rete Attiva</div>
+                        </div>`; 
+                } 
+            } catch(e) { 
+                listEl.innerHTML = "<div style='color:var(--danger); text-align:center; font-weight:800; font-size:0.85rem;'>[CRITICO] Rete non trovata o firma revocata.</div>"; 
+            } 
+        }
+
+        async function uploadToCloudHub() { 
+            const inputAlias = document.getElementById('cloud-alias-input').value.trim(); 
+            const vName = document.getElementById('cloud-version-name').value.trim() || `Sincronizzazione Root`; 
+            
+            if(!inputAlias) return showToast("Necessario Alias aziendale.", "error");
+            if(!confirm("[WARNING] La sovrascrittura spazzerà via i dati cloud precedenti. Procedere?")) return; 
+            
+            const payload = { 
+                metadata: { version_name: vName, timestamp: new Date().toISOString() }, 
+                data: appStructure 
+            }; 
+            
+            showToast("Trasmissione dati in corso...", "info"); 
+            
+            try { 
+                let res;
+                let realHubId = await resolveAliasToId(inputAlias); 
+                
+                if(realHubId) { 
+                    res = await fetch(`https://api.jsonbin.io/v3/b/${realHubId}`, { 
+                        method: 'PUT', 
+                        headers: {'Content-Type': 'application/json', 'X-Master-Key': CLOUD_KEY}, 
+                        body: JSON.stringify(payload) 
+                    }); 
+                    if (!res.ok) throw new Error("Upload rifiutato dal server.");
+                } else { 
+                    res = await fetch('https://api.jsonbin.io/v3/b', { 
+                        method: 'POST', 
+                        headers: {'Content-Type': 'application/json', 'X-Master-Key': CLOUD_KEY, 'X-Bin-Name': 'Cucina_ERP_Hub'}, 
+                        body: JSON.stringify(payload) 
+                    }); 
+                    const data = await res.json(); 
+                    if(!data || !data.metadata) throw new Error("Istanziazione Bin fallita.");
+                    
+                    realHubId = data.metadata.id; 
+                    await registerAliasMapping(inputAlias, realHubId);
+                } 
+                
+                localStorage.setItem('cucina_v9_hub_id', realHubId); 
+                if (inputAlias.length < 24) localStorage.setItem('cucina_v13_alias', inputAlias);
+
+                document.getElementById('cloud-status-message').style.display = 'block'; 
+                showToast("Matrice Cloud allineata.", "success"); 
+                fetchCloudVersions(realHubId, document.getElementById('cloud-versions-list')); 
+                
+            } catch(e) { 
+                console.error("[Cloud Engine] Upload Error:", e);
+                showToast("Anomalia di Rete. Dati non salvati.", "error"); 
+            } 
+        }
+
+        async function downloadFromCloudHub() { 
+            const inputAlias = document.getElementById('cloud-alias-input').value.trim(); 
+            if(!inputAlias) return showToast("Fornire Alias Aziendale.", "error");
+            if(!confirm("[DANGER] Il download incenerirà l'intera struttura locale attuale. Continuare?")) return; 
+            
+            showToast("Interrogazione Server...", "info"); 
+            
+            try { 
+                let realHubId = await resolveAliasToId(inputAlias);
+                if(!realHubId) throw new Error("Alias non registrato.");
+
+                const res = await fetch(`https://api.jsonbin.io/v3/b/${realHubId}/latest`, { 
+                    headers: { 'X-Master-Key': CLOUD_KEY } 
+                }); 
+                
+                if (!res.ok) throw new Error("Bin inaccessibile."); 
+                
+                const json = await res.json(); 
+                if(json.record && json.record.data) { 
+                    appStructure = json.record.data; 
+                    
+                    localStorage.setItem('cucina_v9_hub_id', realHubId); 
+                    if (inputAlias.length < 24) localStorage.setItem('cucina_v13_alias', inputAlias);
+
+                    saveStructure(); 
+                    closeModals(); 
+                    
+                    initApp(); 
+                    showToast("Struttura sovrascritta con successo.", "success"); 
+                } 
+            } catch(e) { 
+                console.error("[Cloud Engine] Download Error:", e);
+                showToast("Risoluzione Cloud fallita.", "error"); 
+            } 
+        }
+
+        function shareApp() { 
+            const savedAlias = localStorage.getItem('cucina_v13_alias') || localStorage.getItem('cucina_v12_alias') || localStorage.getItem('cucina_v11_alias');
+            const hubId = localStorage.getItem('cucina_v9_hub_id'); 
+            
+            let urlParams = '';
+            if (savedAlias) {
+                urlParams = `?alias=${savedAlias}`;
+            } else if (hubId) {
+                urlParams = `?hub=${hubId}`;
+            }
+
+            const shareUrl = window.location.href.split('?')[0] + urlParams; 
+            
+            if (navigator.share) { 
+                navigator.share({ 
+                    title: 'ERP Access', 
+                    text: `Matrice di accesso: ${savedAlias || ''}`, 
+                    url: shareUrl 
+                }).catch(console.error); 
+            } else { 
+                navigator.clipboard.writeText(shareUrl).then(() => {
+                    showToast("URI copiato nella clipboard.", "success"); 
+                });
+            } 
+        }
+
+        function checkUrlParams() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const pAlias = urlParams.get('alias');
+                const pHub = urlParams.get('hub');
+                
+                if (pAlias) localStorage.setItem('cucina_v13_alias', pAlias);
+                if (pHub) localStorage.setItem('cucina_v9_hub_id', pHub);
+                
+                if(pAlias || pHub) {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    showToast("Parametri rete acquisiti. Esegui Download da Cloud Sync.", "success");
+                }
+            } catch(e) {
+                console.warn("[Router] Errore lettura URL", e);
+            }
+        }
+
+        // --- 18. UTILITIES E EVENTI KERNEL ---
+        function requestEditMode() { 
+            editMode = !editMode; 
+            document.body.classList.toggle('edit-mode', editMode); 
+            
+            const btn = document.getElementById('sidebar-edit-status'); 
+            if(btn) { 
+                btn.innerHTML = editMode ? `<i class="fa-solid fa-lock"></i> BLOCCA MODIFICHE` : `<i class="fa-solid fa-unlock"></i> SBLOCCA STRUTTURA`; 
+                btn.style.background = editMode ? "var(--warning)" : "rgba(255,255,255,0.1)"; 
+                btn.style.color = editMode ? "#000" : "#fff"; 
+            } 
+            
+            document.querySelectorAll('.edit-only').forEach(el => {
+                el.style.display = editMode ? 'flex' : 'none';
+            }); 
+            
+            renderApp(); 
+        }
+        
+        function setupPin() { 
+            const newPin = prompt("Firma di Rete Root (Admin PIN):"); 
+            if (newPin) { 
+                localStorage.setItem('cucina_v8_pin', newPin); 
+                showToast("Firma sovrascritta con successo.", "success"); 
+            } 
+        }
+        
+        function toggleFIFO() { 
+            isFifo = !isFifo; 
+            const btn = document.getElementById('btn-fifo'); 
+            if(btn) {
+                btn.style.color = isFifo ? "var(--card)" : "var(--text-muted)"; 
+                btn.style.background = isFifo ? "var(--primary)" : "transparent"; 
+            }
+            renderContent(); 
+        }
+        
+        function toggleTheme() { 
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'dark' ? 'light' : 'dark'; 
+            document.documentElement.setAttribute('data-theme', next); 
+            localStorage.setItem('cucina_v8_theme', next); 
+        }
+
+        // INIZIALIZZAZIONE HARDWARE (ENTRY POINT)
+        window.onload = () => {
+            checkUrlParams();
+            initApp();
+        };
+
+    </script>
+</body>
+</html>
