@@ -1293,11 +1293,12 @@
             } 
         }
 
-        async function uploadToCloudHub() { 
+        
+                async function uploadToCloudHub() { 
             const ia = document.getElementById('cloud-alias-input').value.trim(); 
             const vn = document.getElementById('cloud-version-name').value.trim() || `Sincronizzazione Manuale`; 
             
-            if(!ia) return showToast("Identificativo Alias Obbligatorio.", "error"); 
+            if(!ia) return showToast("Identificativo Obbligatorio.", "error"); 
             if(!confirm("[WARNING] Questa azione sovrascriverà l'intera memoria Cloud con i tuoi dati attuali. Continuare?")) return; 
             
             const p = {metadata:{version_name:vn, timestamp:new Date().toISOString()}, data:appStructure}; 
@@ -1307,29 +1308,34 @@
                 let res; 
                 let rid = await resolveAliasToId(ia); 
                 
-                if(rid) {
+                // Salvataggio nella Cassaforte (JSONBin)
+                if(rid && rid.length >= 24) {
                     res = await fetch(`https://api.jsonbin.io/v3/b/${rid}`, {method:'PUT', headers:{'Content-Type':'application/json','X-Master-Key':CLOUD_KEY}, body:JSON.stringify(p)}); 
                     if(!res.ok) throw new Error();
                 } else {
-                    res = await fetch('https://api.jsonbin.io/v3/b', {method:'POST', headers:{'Content-Type':'application/json','X-Master-Key':CLOUD_KEY,'X-Bin-Name':'Scutum_ERP_Hub'}, body:JSON.stringify(p)}); 
+                    res = await fetch('https://api.jsonbin.io/v3/b', {method:'POST', headers:{'Content-Type':'application/json','X-Master-Key':CLOUD_KEY,'X-Bin-Name':'Scutum_ERP'}, body:JSON.stringify(p)}); 
                     const d = await res.json(); 
                     if(!d || !d.metadata) throw new Error(); 
                     rid = d.metadata.id; 
                 } 
                 
-                // Forza la registrazione alias ripulita
+                // Tentativo di usare il Centralino (se fallisce, andiamo avanti lo stesso)
                 await registerAliasMapping(ia, rid);
                 
                 localStorage.setItem('nexus_hub_id', rid); 
-                localStorage.setItem('nexus_alias', ia.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()); 
+                localStorage.setItem('nexus_alias', ia); 
                 
-                document.getElementById('cloud-status-message').style.display = 'block'; 
+                // LA MODIFICA: Mostriamo il VERO ID a schermo per bypassare l'alias
+                const msgBox = document.getElementById('cloud-status-message');
+                msgBox.innerHTML = `ALLINEAMENTO COMPLETATO!<br><br><span style="font-size:0.85rem; color:var(--text); text-transform:none; font-weight:normal;">Se l'alias fallisce, usa questo Codice Assoluto per scaricare i dati:</span><br><b style="color:var(--accent); font-size:1.1rem; letter-spacing:2px; user-select:all; display:inline-block; margin-top:8px; background:rgba(0,0,0,0.5); padding:8px 12px; border-radius:8px;">${rid}</b>`;
+                msgBox.style.display = 'block'; 
+                
                 fetchCloudVersions(rid, document.getElementById('cloud-versions-list')); 
-                showToast("Dati Caricati con Successo.", "success");
             } catch(e) { 
                 showToast("Fallimento Comunicazione Server.", "error"); 
             } 
         }
+
 
         async function downloadFromCloudHub() { 
             const ia = document.getElementById('cloud-alias-input').value.trim(); 
