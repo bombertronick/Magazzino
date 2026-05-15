@@ -2429,9 +2429,8 @@
             l.click(); 
             document.body.removeChild(l); 
         }
-
-        // ==========================================================================
-        // 12. CLOUD SYNC ENGINE
+                // ==========================================================================
+        // 12. CLOUD SYNC ENGINE (CON PONTE DI RETRO-COMPATIBILITÀ)
         // ==========================================================================
         function shareApp() { 
             const sa = localStorage.getItem('nexus_alias'); 
@@ -2470,11 +2469,23 @@
             let r = a; 
             if(a && a.length < 24) {
                 try {
+                    // TENTATIVO 1: Ricerca nel nuovo ecosistema Nexus
                     let res = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/NexusERP_${a.toLowerCase()}`); 
-                    if(!res.ok) return null; 
-                    let v = await res.text(); 
-                    if(v && v.length > 10 && !v.includes("Error") && !v.includes("null")) r = v.replace(/"/g,'').trim(); 
-                    else return null;
+                    let v = res.ok ? await res.text() : null; 
+                    
+                    if(v && v.length > 10 && !v.includes("Error") && !v.includes("null")) {
+                        return v.replace(/"/g,'').trim(); 
+                    }
+                    
+                    // TENTATIVO 2 (PONTE QUANTICO): Ricerca nel vecchio ecosistema Cucina (V12/V13)
+                    let resFallback = await fetch(`https://keyvalue.immanuel.co/api/KeyVal/GetValue/CucinaERP_${a.toLowerCase()}`); 
+                    let vFallback = resFallback.ok ? await resFallback.text() : null; 
+                    
+                    if(vFallback && vFallback.length > 10 && !vFallback.includes("Error") && !vFallback.includes("null")) {
+                        return vFallback.replace(/"/g,'').trim();
+                    }
+                    
+                    return null;
                 } catch(e) { return null; }
             } 
             return r; 
@@ -2482,7 +2493,11 @@
         
         async function registerAliasMapping(a, h) { 
             if(a && a.length < 24) {
-                try { await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/NexusERP_${a.toLowerCase()}/${h}`, {method:'POST'}); } catch(e){}
+                try { 
+                    // Scrive in entrambi i database per sincronizzare tutti i dispositivi passati e futuri
+                    await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/NexusERP_${a.toLowerCase()}/${h}`, {method:'POST'}); 
+                    await fetch(`https://keyvalue.immanuel.co/api/KeyVal/UpdateValue/CucinaERP_${a.toLowerCase()}/${h}`, {method:'POST'}); 
+                } catch(e){}
             } 
         }
 
@@ -2601,3 +2616,5 @@
     </script>
 </body>
 </html>
+
+                            
